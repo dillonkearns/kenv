@@ -34,6 +34,14 @@ For example, if an incorrect gender is used, state what the correct gender is, l
 
 If a preposition is incorrect, give a brief explanation of the relevant rule if it can be very concisely stated. For example, "changed to på because it is used for surfaces or specific points."
 
+Don't limit suggestions to basic spelling and grammar mistakes, but also include suggestions for more complex issues like incorrect or unidiomatic word choice, phrasing, idioms, etc.
+
+Some context to keep in mind: I am a new father of a 4-month old boy named Rohan and am often speaking about him in my messages. If you notice any baby-related terms that are not idiomatic (perhaps they are directly translated from English, but aren't the word or phrase a native Norwegian speaker would use), please correct them.
+
+So if you see "onesie", assume that is talking about a baby outfit and use the appropriate Norwegian baby term. For example, if you see "spytte opp", assume that is talking about a baby spitting up and use the appropriate Norwegian term, "å gulpe". Use the context of talking about a baby to determine if there is a phrase that is being directly translated from English, and make it more idiomatic using your knoweldge of Norwegian baby terms and phrases.
+
+Also, if you see a segment that is surrounded in curly braces, take that to mean it is a value in English. Of course, translate it within its context so that the final flow of the entire message still makes sense with that substitued value.
+
 Return a strictly JSON response, with the following format:
 
 - "suggested" a string of the recommended text with modifications applied.
