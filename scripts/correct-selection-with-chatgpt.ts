@@ -1,26 +1,18 @@
 // Name: Correct selection
 // Description: Fix grammar and spelling mistakes in any text field.
-// Shortcut:cmd+option+g
+// Shortcut:option+g
 
 import "@johnlindquist/kit";
 
-import Bottleneck from "bottleneck";
+import OpenAI from "openai";
 
 import * as Diff from "diff";
-import {
-  array,
-  boolean,
-  field,
-  fields,
-  type Infer,
-  format,
-  number,
-  string,
-  JSON as tinyJSON,
-} from "tiny-decoders";
 
 const openAiKey = await env("OPENAI_API_KEY", {
   hint: `Grab a key from <a href="https://platform.openai.com/account/api-keys">here</a>`,
+});
+const openai = new OpenAI({
+  apiKey: openAiKey,
 });
 
 const correctionPrompt = (text) =>
@@ -40,74 +32,104 @@ Some context to keep in mind: I am a new father of a 4-month old boy named Rohan
 
 So if you see "onesie", assume that is talking about a baby outfit and use the appropriate Norwegian baby term. For example, if you see "spytte opp", assume that is talking about a baby spitting up and use the appropriate Norwegian term, "å gulpe". Use the context of talking about a baby to determine if there is a phrase that is being directly translated from English, and make it more idiomatic using your knoweldge of Norwegian baby terms and phrases.
 
-Also, if you see a segment that is surrounded in curly braces, take that to mean it is a value in English. Of course, translate it within its context so that the final flow of the entire message still makes sense with that substitued value.
+Also, if you see a segment that is surrounded in curly braces, take that to mean it is a value in English. The suggested text SHOULD NOT contain any curly braces. Of course, translate it within its context so that the final flow of the entire message still makes sense with that substitued value.
 
-Return a strictly JSON response, with the following format:
+Return a response that strictly follows the following format:
 
-- "suggested" a string of the recommended text with modifications applied.
-- "context" an array of strings, each one representing brief bullet points to explain any non-obvious changes. To be mindful of the readers time, keep it concise - do not include any explanations for obvious things such as a typo or spelling correction, only for changse where it would be illuminating to add a little context.
+- The first line must be the suggested text (the original with modifications applied). Do not include any other information, context, comments, explanations, or characters, and DO NOT include a new line as part of this suggested text. The newline will be the delimter to indicate the end of this content.
+- After a newline from the suggested text, include a single line with the English translation of the suggested text, followed by a newline.
+- After the newline for the previous content, the rest of the response should be context, which should again be newline-separated, with one point of context on each line. Each of the lines represents a brief bullet point to explain any non-obvious changes. To be mindful of the readers time, keep it concise - do not include any explanations for obvious things such as a typo or spelling correction, only for changse where it would be illuminating to add a little context. Be sure to include anything you are uncertain about in the context as its important for me to know potential issues before I send my messages.
 
 
 Here is the original text:
 
 ${text}`;
 
-const limiter = new Bottleneck({
-  maxConcurrent: 1,
-  minTime: 100,
-});
-
-const type = (text) => {
-  return new Promise((resolve) => {
-    keyboard.type(text);
-    resolve();
-  });
-};
-
-const wrappedType = limiter.wrap(type);
-
+await hide();
+await wait(100);
+await getSelectedText();
 const text = await getSelectedText();
+await wait(100);
 
 if (text) {
-  const { suggested, context } = await getGptResponse(correctionPrompt(text));
-  const diffHtmlString = diffHtml(text, suggested);
+  let suggestionView = await widget(
+    `<div class="flex flex-col"><h2 class="p-10 text-4xl text-center" v-html="diffHtmlString"></h2>
+<ul class="list-disc p-10">
+  <li v-for="item in context" v-html="item">
+  <!-- remove leading "- " from item, IF present  -->
+{{ item, "")}}
+</li>
+</ul>
+</div>`,
+    {
+      center: true,
+      width: 800,
+      height: 800,
+      // fullscreen: true,
 
-  await div(`<h2 class="p-10 text-4xl text-center">${diffHtmlString}</h2>
-  <!-- let's apply some nice tailwind ul formatting! -->
-  <ul class="list-disc p-10">
-  ${context.map((c) => `<li>${md(c)}</li>`).join("")}
-  </ul>`);
-  wrappedType(suggested);
-}
-
-async function getGptResponse(prompt) {
-  const gptCodec = fields({
-    suggested: string,
-    context: array(string),
-  });
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openAiKey}`,
+      state: { diffHtmlString: "<span></span>" },
     },
-    body: JSON.stringify({
-      response_format: { type: "json_object" },
-      temperature: 0.7,
-      messages: [{ role: "user", content: prompt }],
-      model: "gpt-4-turbo",
-    }),
+  );
+  suggestionView.setState({
+    diffHtmlString: diffHtml(text, ""),
   });
-
-  const json = await response.json();
-  const decoded = gptCodec.decoder(JSON.parse(json.choices[0].message.content));
-  switch (decoded.tag) {
-    case "Valid":
-      return decoded.value;
-    case "DecoderError":
-      throw new Error(format(decoded.error));
+  const stream = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    // model: "gpt-4",
+    temperature: 0.5,
+    messages: [{ role: "user", content: correctionPrompt(text) }],
+    stream: true,
+  });
+  let i = 0;
+  let suggested = "";
+  let suggestedComplete = false;
+  let thisContext = "";
+  let context = [];
+  for await (const chunk of stream) {
+    const thisChunk = chunk.choices[0]?.delta?.content || "";
+    if (suggestedComplete) {
+      if (thisChunk.endsWith("\n")) {
+        context.push(thisContext + thisChunk);
+        thisContext = "";
+      } else if (thisChunk.includes("\n")) {
+        let previous,
+          nextItems = thisChunk.split("\n");
+        context.push(thisContext + previous);
+        // push each item except the last from nextItems
+        if (nextItems.length > 1) {
+          for (let j = 0; j < nextItems.length - 1; j++) {
+            context.push(nextItems[j]);
+          }
+          // set thisContext to the last item in nextItems
+          thisContext = nextItems[nextItems.length - 1];
+        } else {
+          thisContext = "";
+        }
+      } else {
+        thisContext += thisChunk;
+      }
+      suggestionView.setState({
+        context: context.map((c) => c.replace(/^\s*-\s*/, "")),
+      });
+    } else {
+      suggested += thisChunk;
+      suggestionView.setState({
+        diffHtmlString: diffHtml(text, suggested),
+      });
+      if (thisChunk.includes("\n")) {
+        suggestedComplete = true;
+        // break;
+      }
+    }
+    i += 1;
   }
+
+  suggestionView.onInput(async (input) => {
+    // if enter key
+  });
+  await setSelectedText(suggested);
 }
+
 
 function diffHtml(one: string, other: string) {
   const diff = Diff.diffWords(one, other);
