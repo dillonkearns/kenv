@@ -2,18 +2,28 @@
 // Description: Fix grammar and spelling mistakes in any text field.
 // Shortcut:option+j
 
-import "@johnlindquist/kit";
+// import "@johnlindquist/kit";
 
-import OpenAI from "openai";
+// import OpenAI from "openai";
+
+import { ChatOpenAI } from "@langchain/openai";
+import { ConversationChain } from "langchain/chains";
+import { BufferWindowMemory } from "langchain/memory";
+import {
+  ChatPromptTemplate,
+  HumanMessagePromptTemplate,
+  SystemMessagePromptTemplate,
+  MessagesPlaceholder,
+} from "@langchain/core/prompts";
 
 import * as Diff from "diff";
 
 const openAiKey = await env("OPENAI_API_KEY", {
   hint: `Grab a key from <a href="https://platform.openai.com/account/api-keys">here</a>`,
 });
-const openai = new OpenAI({
-  apiKey: openAiKey,
-});
+// const openai = new OpenAI({
+//   apiKey: openAiKey,
+// });
 
 const correctionPrompt = (text) =>
   `Please fix the grammar and spelling of the following text in Norwegian and return it without any other changes. If there are any phrases that are not idiomatic Norwegian that a native speaker would use, please fix them. However, do not make any stylistic changes at all *unless* they would be considered incorrect or sound off to a native speaker.
@@ -34,16 +44,18 @@ So if you see "onesie", assume that is talking about a baby outfit and use the a
 
 Also, if you see a segment that is surrounded in curly braces, take that to mean it is a value in English. The suggested text SHOULD NOT contain any curly braces. Of course, translate it within its context so that the final flow of the entire message still makes sense with that substitued value.
 
-Return a response that strictly follows the following format:
+Return an initial response that strictly follows the following format:
 
 - The first line must be the suggested text (the original with modifications applied). Do not include any other information, context, comments, explanations, or characters, and DO NOT include a new line as part of this suggested text. The newline will be the delimter to indicate the end of this content.
 - After a newline from the suggested text, include a single line with the English translation of the suggested text, followed by a newline.
 - After the newline for the previous content, the rest of the response should be context, which should again be newline-separated, with one point of context on each line. Each of the lines represents a brief bullet point to explain any non-obvious changes. To be mindful of the readers time, keep it concise - do not include any explanations for obvious things such as a typo or spelling correction, only for changse where it would be illuminating to add a little context. Be sure to include anything you are uncertain about in the context as its important for me to know potential issues before I send my messages.
 
+After the initial response, continue in a conversational style with the user to refine the suggestions and provide more context as needed based on the user's requests.
+
 
 Here is the original text:
 
-${text}`;
+{input}`;
 
 // await hide();
 // await wait(100);
@@ -51,44 +63,19 @@ const text = await getSelectedText();
 // await wait(100);
 
 function diffViewString(diffHtmlString, context) {
-  return `<div class="flex flex-col"><h2 class="p-10 text-4xl text-center">${diffHtmlString}</h2>
+  return `<div class="flex flex-col"><div class="p-10 text-2xl text-center">${diffHtmlString}</div>
 <ul class="list-disc p-10">
   ${context.map((item) => `<li>${item}</li>`)}
 </ul>
 </div>`;
 }
 
-if (text) {
-  //   let suggestionView = await widget(
-  //     `<div class="flex flex-col"><h2 class="p-10 text-4xl text-center" v-html="diffHtmlString"></h2>
-  // <ul class="list-disc p-10">
-  //   <li v-for="item in context" v-html="item">
-  //   <!-- remove leading "- " from item, IF present  -->
-  // {{ item, "")}}
-  // </li>
-  // </ul>
-  // </div>`,
-  //     {
-  //       // center: true,
-  //       width: 800,
-  //       height: 800,
-  //       focusable: false,
-  //       // fullscreen: true,
+let useOld = false;
 
-  //       state: { diffHtmlString: "<span></span>", suggestedComplete: false },
-  //       // focusable: false,
-  //       closable: true,
-  //       movable: true,
-  //       // alwaysOnTop: true,
-  //     },
-  //   );
+if (text && useOld) {
   chat.setMessage(0, diffViewString(diffHtml(text, ""), []));
-  // suggestionView.setState({
-  //   diffHtmlString: diffHtml(text, ""),
-  // });
   const stream = await openai.chat.completions.create({
     model: "gpt-4-turbo",
-    // model: "gpt-4",
     // temperature: 0.5,
     temperature: 0.2,
     messages: [{ role: "user", content: correctionPrompt(text) }],
@@ -101,7 +88,6 @@ if (text) {
   let context = [];
   let confirm;
   const chatMessagesPromise = chat({
-    // choices: ["Yes", "No"],
     actions: [
       {
         name: "Accept?",
@@ -142,6 +128,7 @@ if (text) {
       suggested += thisChunk;
       if (thisChunk.includes("\n")) {
         suggestedComplete = true;
+        chat.addMessage("");
 
         // confirm = arg({
         //   placeholder: "Replace selected text with corrected text?",
@@ -159,32 +146,6 @@ if (text) {
     i += 1;
   }
 
-  // const confirmText = await confirm;
-  // if (confirmText === "Yes") {
-  //   await clipboard.writeText(suggested); // }
-
-  // const choice = await arg({
-  //   placeholder: "Replace selected text with corrected text?",
-  //   enter: "Confirm",
-  //   onEscape: () => {},
-  //   choices: ["Confirm", "Cancel"],
-  // });
-
-  // if (choice === "Confirm") {
-  // suggestionView.close();
-  // await hide();
-  // await blur();
-  // await wait(100);
-  // suggestionView.onClose(async () => {
-  //   await focus();
-  //   await setSelectedText(suggested);
-  // });
-  // }
-  // const tab = kit.getActiveTab();
-  // kit.focusTab();
-  // suggestionView.close();
-  // await wait(100);
-  // await setSelectedText(suggested);
   await chatMessagesPromise;
 }
 
@@ -200,4 +161,156 @@ function diffHtml(one: string, other: string) {
     return `<span class="${tailwindColorClass}">${part.value}</span>`;
   });
   return nodes.join("");
+}
+
+if (text && !useOld) {
+  let prompt = ChatPromptTemplate.fromMessages([
+    SystemMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
+    new MessagesPlaceholder("history"),
+    HumanMessagePromptTemplate.fromTemplate("{input}"),
+  ]);
+
+  let openAIApiKey = await env("OPENAI_API_KEY", {
+    hint: `Grab a key from <a href="https://platform.openai.com/account/api-keys">here</a>`,
+  });
+
+  let suggestedComplete = false;
+  let currentMessage = ``;
+  let currentInput = ``;
+  let chatHistoryPreAbort = [];
+  let suggested = "";
+  let id = -1;
+  let running = false;
+  let llm = new ChatOpenAI({
+    openAIApiKey,
+    modelName: "gpt-4-turbo",
+    streaming: true,
+    callbacks: [
+      {
+        handleLLMStart: async () => {
+          id = setTimeout(() => {
+            chat.setMessage(
+              -1,
+              md(`### Sorry, the AI is taking a long time to respond.`),
+            );
+            setLoading(true);
+          }, 3000);
+          log(`handleLLMStart`);
+          currentMessage = ``;
+          chat.addMessage("");
+        },
+        handleLLMNewToken: async (token) => {
+          clearTimeout(id);
+          setLoading(false);
+          if (!token) return;
+
+          if (!suggestedComplete) {
+            suggested += token;
+            if (token.includes("\n")) {
+              suggestedComplete = true;
+              chat.addMessage("");
+            }
+            chat.setMessage(0, diffViewString(diffHtml(text, suggested), []));
+          } else {
+            currentMessage += token;
+            let htmlMessage = md(currentMessage);
+            chat.setMessage(-1, htmlMessage);
+          }
+        },
+        // Hitting escape to abort throws and error
+        // Must manually save to memory
+        handleLLMError: async (err) => {
+          warn(`error`, JSON.stringify(err));
+          running = false;
+          // for (let message of chatHistoryPreAbort) {
+          //   log({ message })
+          //   if (message.text.startsWith(memory.aiPrefix)) {
+          //     await memory.chatHistory.addAIChatMessage(message)
+          //   }
+          //   if (message.text.startsWith(memory.humanPrefix)) {
+          //     await memory.chatHistory.addUserMessage(message)
+          //   }
+
+          //   await memory.chatHistory.addAIChatMessage(currentMessage)
+          //   await memory.chatHistory.addUserMessage(currentInput)
+          // }
+
+          memory.chatHistory.addUserMessage(currentInput);
+          memory.chatHistory.addAIChatMessage(currentMessage);
+        },
+        handleLLMEnd: async () => {
+          running = false;
+          log(`handleLLMEnd`);
+        },
+      },
+    ],
+  });
+
+  let memory = new BufferWindowMemory({
+    k: 10,
+    inputKey: "input", // required when using a signal to abort
+    returnMessages: true,
+  });
+
+  let chain = new ConversationChain({
+    llm,
+    prompt,
+    memory,
+  });
+  // chain.call({
+  //   input: "",
+  // });
+
+  let controller = new AbortController();
+
+  chain.call({
+    input: text,
+    controller,
+  });
+  await chat({
+    shortcuts: [
+      {
+        name: `Close`,
+        key: `${cmd}+w`,
+        onPress: () => {
+          process.exit();
+        },
+        bar: "left",
+      },
+      {
+        name: `Continue Script`,
+        key: `${cmd}+enter`,
+        onPress: () => {
+          submit("");
+        },
+        bar: "right",
+      },
+    ],
+    onEscape: async () => {
+      // chatHistoryPreAbort = await memory.chatHistory.getMessages()
+      // log({ chatHistory: memory.chatHistory })
+      // log({ chatHistoryPreAbort })
+
+      if (running) controller.abort();
+    },
+    onSubmit: async (input) => {
+      currentInput = input;
+      controller = new AbortController();
+      running = true;
+      await chain.call({ input, signal: controller.signal });
+    },
+  });
+
+  let conversation = (await memory.chatHistory.getMessages())
+    .map(
+      (m) =>
+        (m.constructor.name.startsWith("Human")
+          ? memory.humanPrefix
+          : memory.aiPrefix) +
+        "\n" +
+        m.text,
+    )
+    .join("\n\n");
+
+  inspect(conversation);
 }
