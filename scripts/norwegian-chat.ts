@@ -146,6 +146,7 @@ if (text) {
               if (token.includes("\n")) {
                 suggestedComplete = true;
                 chat.addMessage("");
+                memory.chatHistory.addAIChatMessage(suggested);
               }
               chat.setMessage(0, diffViewString(diffHtml(text, suggested), []));
             } else {
