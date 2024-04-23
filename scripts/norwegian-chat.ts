@@ -9,9 +9,8 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { ConversationChain } from "langchain/chains";
 import { BufferWindowMemory } from "langchain/memory";
-// import { ChatOllama } from "@langchain/community/chat_models/ollama";
+import { ChatOllama } from "@langchain/community/chat_models/ollama";
 import { ChatAnthropic } from "@langchain/anthropic";
-
 
 import {
   ChatPromptTemplate,
@@ -66,7 +65,7 @@ After the initial response, continue in a conversational style with the user to 
 
 Here is the original text:
 
-{input}`;
+${text}`;
 
 const text = await getSelectedText();
 
@@ -94,9 +93,9 @@ function diffHtml(one: string, other: string) {
 
 if (text) {
   let prompt = ChatPromptTemplate.fromMessages([
-    // SystemMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
-    // new MessagesPlaceholder("history"),
-    HumanMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
+    correctionPrompt(text),
+    new MessagesPlaceholder("history"),
+    ["human", "{input}"],
   ]);
 
   let openAIApiKey = await env("OPENAI_API_KEY", {
@@ -120,6 +119,8 @@ if (text) {
       //   // model: "claude-3-sonnet-20240229",
       //   model: "claude-3-opus-20240229",
       //   anthropicApiKey: anthropicKey,
+      // new ChatOllama({
+      //   model: "llama3:70b",
       streaming: true,
       callbacks: [
         {
@@ -193,6 +194,9 @@ if (text) {
     prompt,
     memory,
   });
+  chain.pipe(prompt);
+
+  // let chain = prompt.pipe(llm);
   // chain.call({
   //   input: "",
   // });
@@ -243,6 +247,7 @@ if (text) {
       controller = new AbortController();
       running = true;
       await chain.call({ input, signal: controller.signal });
+      // await llm.invoke(input, { signal: controller.signal });
     },
   });
 
