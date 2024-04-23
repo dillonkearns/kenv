@@ -9,6 +9,10 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { ConversationChain } from "langchain/chains";
 import { BufferWindowMemory } from "langchain/memory";
+// import { ChatOllama } from "@langchain/community/chat_models/ollama";
+import { ChatAnthropic } from "@langchain/anthropic";
+
+
 import {
   ChatPromptTemplate,
   HumanMessagePromptTemplate,
@@ -20,6 +24,9 @@ import * as Diff from "diff";
 
 const openAiKey = await env("OPENAI_API_KEY", {
   hint: `Grab a key from <a href="https://platform.openai.com/account/api-keys">here</a>`,
+});
+const anthropicKey = await env("ANTHROPIC_API_KEY", {
+  hint: `Grab a key from <a href="https://console.anthropic.com/settings/keys">here</a>`,
 });
 // const openai = new OpenAI({
 //   apiKey: openAiKey,
@@ -43,6 +50,10 @@ Some context to keep in mind: I am a new father of a 4-month old boy named Rohan
 So if you see "onesie", assume that is talking about a baby outfit and use the appropriate Norwegian baby term. For example, if you see "spytte opp", assume that is talking about a baby spitting up and use the appropriate Norwegian term, "å gulpe". Use the context of talking about a baby to determine if there is a phrase that is being directly translated from English, and make it more idiomatic using your knoweldge of Norwegian baby terms and phrases.
 
 Also, if you see a segment that is surrounded in curly braces, take that to mean it is a value in English. The suggested text SHOULD NOT contain any curly braces. Of course, translate it within its context so that the final flow of the entire message still makes sense with that substitued value.
+
+If you see a section with square brackets around it, those must also be replaced (the suggested text SHOULD NOT contain any square brackets). The square brackets are for text that is in Norwegian, but where I am unsure if it is proper or idiomatic. If you see | characters within the square brackets, that means there are multiple options for that segment that I am considering, and you should either choose if it is indeed idiomatic and correct, OR suggest one if none of the options are ideal.
+
+If you see a section with carets around it, <>, that means I would like additional context or information about that segment. The suggested text SHOULD NOT contain any carets. However, do be sure to include helpful context, like the definition and translation of that word in the context section.
 
 Return an initial response that strictly follows the following format:
 
@@ -76,7 +87,6 @@ if (text && useOld) {
   chat.setMessage(0, diffViewString(diffHtml(text, ""), []));
   const stream = await openai.chat.completions.create({
     model: "gpt-4-turbo",
-    // temperature: 0.5,
     temperature: 0.2,
     messages: [{ role: "user", content: correctionPrompt(text) }],
     stream: true,
@@ -165,9 +175,9 @@ function diffHtml(one: string, other: string) {
 
 if (text && !useOld) {
   let prompt = ChatPromptTemplate.fromMessages([
-    SystemMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
-    new MessagesPlaceholder("history"),
-    HumanMessagePromptTemplate.fromTemplate("{input}"),
+    // SystemMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
+    // new MessagesPlaceholder("history"),
+    HumanMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
   ]);
 
   let openAIApiKey = await env("OPENAI_API_KEY", {
@@ -181,70 +191,77 @@ if (text && !useOld) {
   let suggested = "";
   let id = -1;
   let running = false;
-  let llm = new ChatOpenAI({
-    openAIApiKey,
-    modelName: "gpt-4-turbo",
-    streaming: true,
-    callbacks: [
-      {
-        handleLLMStart: async () => {
-          id = setTimeout(() => {
-            chat.setMessage(
-              -1,
-              md(`### Sorry, the AI is taking a long time to respond.`),
-            );
-            setLoading(true);
-          }, 3000);
-          log(`handleLLMStart`);
-          currentMessage = ``;
-          chat.addMessage("");
-        },
-        handleLLMNewToken: async (token) => {
-          clearTimeout(id);
-          setLoading(false);
-          if (!token) return;
+  let llm =
+    //
+    new ChatOpenAI({
+      openAIApiKey,
+      // modelName: "gpt-4",
+      modelName: "gpt-4-turbo",
+      // new ChatAnthropic({
+      //   // model: "claude-3-sonnet-20240229",
+      //   model: "claude-3-opus-20240229",
+      //   anthropicApiKey: anthropicKey,
+      streaming: true,
+      callbacks: [
+        {
+          handleLLMStart: async () => {
+            id = setTimeout(() => {
+              chat.setMessage(
+                -1,
+                md(`### Sorry, the AI is taking a long time to respond.`),
+              );
+              setLoading(true);
+            }, 3000);
+            log(`handleLLMStart`);
+            currentMessage = ``;
+            chat.addMessage("");
+          },
+          handleLLMNewToken: async (token) => {
+            clearTimeout(id);
+            setLoading(false);
+            if (!token) return;
 
-          if (!suggestedComplete) {
-            suggested += token;
-            if (token.includes("\n")) {
-              suggestedComplete = true;
-              chat.addMessage("");
+            if (!suggestedComplete) {
+              suggested += token;
+              if (token.includes("\n")) {
+                suggestedComplete = true;
+                chat.addMessage("");
+              }
+              chat.setMessage(0, diffViewString(diffHtml(text, suggested), []));
+            } else {
+              currentMessage += token;
+              let htmlMessage = md(currentMessage);
+              chat.setMessage(-1, htmlMessage);
             }
-            chat.setMessage(0, diffViewString(diffHtml(text, suggested), []));
-          } else {
-            currentMessage += token;
-            let htmlMessage = md(currentMessage);
-            chat.setMessage(-1, htmlMessage);
-          }
-        },
-        // Hitting escape to abort throws and error
-        // Must manually save to memory
-        handleLLMError: async (err) => {
-          warn(`error`, JSON.stringify(err));
-          running = false;
-          // for (let message of chatHistoryPreAbort) {
-          //   log({ message })
-          //   if (message.text.startsWith(memory.aiPrefix)) {
-          //     await memory.chatHistory.addAIChatMessage(message)
-          //   }
-          //   if (message.text.startsWith(memory.humanPrefix)) {
-          //     await memory.chatHistory.addUserMessage(message)
-          //   }
+          },
+          // Hitting escape to abort throws and error
+          // Must manually save to memory
+          handleLLMError: async (err) => {
+            warn(`error`, JSON.stringify(err));
+            running = false;
+            // for (let message of chatHistoryPreAbort) {
+            //   log({ message })
+            //   if (message.text.startsWith(memory.aiPrefix)) {
+            //     await memory.chatHistory.addAIChatMessage(message)
+            //   }
+            //   if (message.text.startsWith(memory.humanPrefix)) {
+            //     await memory.chatHistory.addUserMessage(message)
+            //   }
 
-          //   await memory.chatHistory.addAIChatMessage(currentMessage)
-          //   await memory.chatHistory.addUserMessage(currentInput)
-          // }
+            //   await memory.chatHistory.addAIChatMessage(currentMessage)
+            //   await memory.chatHistory.addUserMessage(currentInput)
+            // }
 
-          memory.chatHistory.addUserMessage(currentInput);
-          memory.chatHistory.addAIChatMessage(currentMessage);
+            memory.chatHistory.addUserMessage(currentInput);
+            memory.chatHistory.addAIChatMessage(currentMessage);
+          },
+          handleLLMEnd: async () => {
+            running = false;
+            log(`handleLLMEnd`);
+          },
         },
-        handleLLMEnd: async () => {
-          running = false;
-          log(`handleLLMEnd`);
-        },
-      },
-    ],
-  });
+      ],
+    });
 
   let memory = new BufferWindowMemory({
     k: 10,
@@ -277,11 +294,20 @@ if (text && !useOld) {
         },
         bar: "left",
       },
+      // {
+      //   name: `Continue Script`,
+      //   key: `${cmd}+enter`,
+      //   onPress: () => {
+      //     submit("");
+      //   },
+      //   bar: "right",
+      // },
       {
-        name: `Continue Script`,
+        name: `Godta endringer`,
         key: `${cmd}+enter`,
-        onPress: () => {
-          submit("");
+        onPress: async () => {
+          await setSelectedText(suggested);
+          exit();
         },
         bar: "right",
       },
