@@ -2,6 +2,7 @@
 // Description: Forslag for norske baby terminologi.
 
 import "@johnlindquist/kit";
+import { UI } from "@johnlindquist/kit/core/enum";
 
 import OpenAI from "openai";
 
@@ -30,16 +31,18 @@ ${text}`;
 const text = await arg("Velg teksten du vil oversette til norsk");
 
 if (text) {
+  let messages = [];
   let suggestionView = await widget(
     `<div class="flex flex-col"><h2 class="p-10 text-4xl text-center">{{original}} -> {{suggestion}}</h2>
-<ul class="list-disc p-10">
-  <li v-for="item in context" v-html="item">
-{{ item }}
-</li>
-</ul>
-</div>`,
+  <ul class="list-disc p-10">
+    <li v-for="item in context" v-html="item">
+  {{ item }}
+  </li>
+
+  </div>`,
     {
-      center: true,
+      // center: true,
+
       width: 800,
       height: 800,
       // fullscreen: true,
@@ -47,9 +50,15 @@ if (text) {
       state: {
         original: text,
         suggestion: "...",
+        messages,
       },
     },
   );
+  // suggestionView.onClick(() => {});
+  suggestionView.onInput(({ value }) => {
+    messages.push({ role: "user", content: value });
+    suggestionView.setState({ messages });
+  });
   const stream = await openai.chat.completions.create({
     model: "gpt-4-turbo",
     temperature: 0.5,
@@ -98,4 +107,29 @@ if (text) {
     }
     i += 1;
   }
+  // await kit.kitPrompt({
+  //   choices: ["a", "b", "c"],
+  //   placeholder: "",
+  //   ignoreBlur: true,
+  //   resize: true,
+  //   ui: UI.chat,
+  // });
+  // await chat()
+  // await chat({
+  //   //   panel: () =>
+  //   //     `<div class="p-10"><h2 class="text-4xl text-center">Forslag for ${text}</h2><p>${suggested}</p></div>`,
+  //   // }
+  //   // green-500
+  //   // html: md(`# Forslag for ${text}`),
+  //   // ui: UI.mic,
+  //   // footer: md("# asdf\n"),
+  //   // preview: `<h2 style="color:red">Forslag for ${text}</h2>`,
+  //   //     md(`# Requirements
+  //   // - Cover Major Characters
+  //   // - Address the theme
+  //   // - Have a beginning, middle, and end
+  //   // `),
+  //   //`<h2 class="text-green-500">Hello!</h2>`,
+  //   // preview: "Hello!",
+  // });
 }
