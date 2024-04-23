@@ -68,10 +68,7 @@ Here is the original text:
 
 {input}`;
 
-// await hide();
-// await wait(100);
 const text = await getSelectedText();
-// await wait(100);
 
 function diffViewString(diffHtmlString, context) {
   return `<div class="flex flex-col"><div class="p-10 text-2xl text-center">${diffHtmlString}</div>
@@ -79,84 +76,6 @@ function diffViewString(diffHtmlString, context) {
   ${context.map((item) => `<li>${item}</li>`)}
 </ul>
 </div>`;
-}
-
-let useOld = false;
-
-if (text && useOld) {
-  chat.setMessage(0, diffViewString(diffHtml(text, ""), []));
-  const stream = await openai.chat.completions.create({
-    model: "gpt-4-turbo",
-    temperature: 0.2,
-    messages: [{ role: "user", content: correctionPrompt(text) }],
-    stream: true,
-  });
-  let i = 0;
-  let suggested = "";
-  let suggestedComplete = false;
-  let thisContext = "";
-  let context = [];
-  let confirm;
-  const chatMessagesPromise = chat({
-    actions: [
-      {
-        name: "Accept?",
-        shortcut: "Enter",
-        onAction: async () => {
-          await setSelectedText(suggested);
-        },
-      },
-    ],
-  });
-  for await (const chunk of stream) {
-    const thisChunk = chunk.choices[0]?.delta?.content || "";
-    if (suggestedComplete) {
-      if (thisChunk.endsWith("\n")) {
-        context.push(thisContext + thisChunk);
-        thisContext = "";
-      } else if (thisChunk.includes("\n")) {
-        let previous,
-          nextItems = thisChunk.split("\n");
-        context.push(thisContext + previous);
-        // push each item except the last from nextItems
-        if (nextItems.length > 1) {
-          for (let j = 0; j < nextItems.length - 1; j++) {
-            context.push(nextItems[j]);
-          }
-          // set thisContext to the last item in nextItems
-          thisContext = nextItems[nextItems.length - 1];
-        } else {
-          thisContext = "";
-        }
-      } else {
-        thisContext += thisChunk;
-      }
-      // suggestionView.setState({
-      //   context: context.map((c) => c.replace(/^\s*-\s*/, "")),
-      // });
-    } else {
-      suggested += thisChunk;
-      if (thisChunk.includes("\n")) {
-        suggestedComplete = true;
-        chat.addMessage("");
-
-        // confirm = arg({
-        //   placeholder: "Replace selected text with corrected text?",
-        //   enter: "Yes",
-        //   choices: ["Yes", "No"],
-        // });
-      }
-      // suggestionView.setState({
-      //   diffHtmlString: diffHtml(text, suggested),
-      //   suggestedComplete,
-      // });
-
-      chat.setMessage(0, diffViewString(diffHtml(text, suggested), []));
-    }
-    i += 1;
-  }
-
-  await chatMessagesPromise;
 }
 
 function diffHtml(one: string, other: string) {
@@ -173,7 +92,7 @@ function diffHtml(one: string, other: string) {
   return nodes.join("");
 }
 
-if (text && !useOld) {
+if (text) {
   let prompt = ChatPromptTemplate.fromMessages([
     // SystemMessagePromptTemplate.fromTemplate(correctionPrompt(text)),
     // new MessagesPlaceholder("history"),
