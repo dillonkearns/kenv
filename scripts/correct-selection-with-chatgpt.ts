@@ -26,7 +26,7 @@ For example, if an incorrect gender is used, state what the correct gender is, l
 
 If a preposition is incorrect, give a brief explanation of the relevant rule if it can be very concisely stated. For example, "changed to på because it is used for surfaces or specific points."
 
-Don't limit suggestions to basic spelling and grammar mistakes, but also include suggestions for more complex issues like incorrect or unidiomatic word choice, phrasing, idioms, etc.
+Don't limit suggestions to basic spelling and grammar mistakes, but also include suggestions for more complex issues like incorrect or unidiomatic word choice, phrasing, idioms, etc. However, keep the language casual and conversational (do not make suggestions that merely increase the formality level when they could be considered correct but less formal without it).
 
 Some context to keep in mind: I am a new father of a 4-month old boy named Rohan and am often speaking about him in my messages. If you notice any baby-related terms that are not idiomatic (perhaps they are directly translated from English, but aren't the word or phrase a native Norwegian speaker would use), please correct them.
 
@@ -45,11 +45,10 @@ Here is the original text:
 
 ${text}`;
 
-await hide();
-await wait(100);
-await getSelectedText();
+// await hide();
+// await wait(100);
 const text = await getSelectedText();
-await wait(100);
+// await wait(100);
 
 if (text) {
   let suggestionView = await widget(
@@ -62,12 +61,17 @@ if (text) {
 </ul>
 </div>`,
     {
-      center: true,
+      // center: true,
       width: 800,
       height: 800,
+      focusable: false,
       // fullscreen: true,
 
-      state: { diffHtmlString: "<span></span>" },
+      state: { diffHtmlString: "<span></span>", suggestedComplete: false },
+      // focusable: false,
+      closable: true,
+      movable: true,
+      // alwaysOnTop: true,
     },
   );
   suggestionView.setState({
@@ -76,7 +80,8 @@ if (text) {
   const stream = await openai.chat.completions.create({
     model: "gpt-4-turbo",
     // model: "gpt-4",
-    temperature: 0.5,
+    // temperature: 0.5,
+    temperature: 0.2,
     messages: [{ role: "user", content: correctionPrompt(text) }],
     stream: true,
   });
@@ -85,6 +90,7 @@ if (text) {
   let suggestedComplete = false;
   let thisContext = "";
   let context = [];
+  let confirm;
   for await (const chunk of stream) {
     const thisChunk = chunk.choices[0]?.delta?.content || "";
     if (suggestedComplete) {
@@ -113,29 +119,55 @@ if (text) {
       });
     } else {
       suggested += thisChunk;
-      suggestionView.setState({
-        diffHtmlString: diffHtml(text, suggested),
-      });
       if (thisChunk.includes("\n")) {
         suggestedComplete = true;
-        // break;
+
+        confirm = arg({
+          placeholder: "Replace selected text with corrected text?",
+          enter: "Yes",
+          choices: ["Yes", "No"],
+        });
       }
+      suggestionView.setState({
+        diffHtmlString: diffHtml(text, suggested),
+        suggestedComplete,
+      });
     }
     i += 1;
   }
+  const confirmText = await confirm;
+  if (confirmText === "Yes") {
+    await clipboard.writeText(suggested);
+  }
 
-  suggestionView.onInput(async (input) => {
-    // if enter key
-  });
-  await setSelectedText(suggested);
+  // const choice = await arg({
+  //   placeholder: "Replace selected text with corrected text?",
+  //   enter: "Confirm",
+  //   onEscape: () => {},
+  //   choices: ["Confirm", "Cancel"],
+  // });
+
+  // if (choice === "Confirm") {
+  // suggestionView.close();
+  // await hide();
+  // await blur();
+  // await wait(100);
+  // suggestionView.onClose(async () => {
+  //   await focus();
+  //   await setSelectedText(suggested);
+  // });
+  // }
+  // const tab = kit.getActiveTab();
+  // kit.focusTab();
+  // suggestionView.close();
+  // await wait(100);
+  // await setSelectedText(suggested);
 }
-
 
 function diffHtml(one: string, other: string) {
   const diff = Diff.diffWords(one, other);
 
   const nodes = diff.map(function async(part) {
-    const color = part.added ? "green" : part.removed ? "red" : "grey";
     const tailwindColorClass = part.added
       ? "text-green-500"
       : part.removed
