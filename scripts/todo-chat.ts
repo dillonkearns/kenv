@@ -90,8 +90,9 @@ let llm = new ChatOllama({
   model: "llama3:70b",
   // model: "llama3",
   numGpu: 99,
-
-  // model: "llama3",
+  numCtx: 128,
+  useMMap: false,
+  // useMLock: true,
   streaming: true,
   callbacks: [
     {
