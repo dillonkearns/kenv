@@ -27,6 +27,7 @@
     "node-ical": "^0.18.0",
     "node-id3": "^0.2.5",
     "openai": "^4.38.2",
+    "openmeteo": "^1.1.3",
     "tiny-decoders": "^23.0.0"
   },
   "engines": {
