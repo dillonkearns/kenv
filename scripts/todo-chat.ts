@@ -6,6 +6,7 @@
 import "@johnlindquist/kit";
 
 import fs from "fs";
+import { OpenAI } from "openai";
 import { ChatOllama } from "@langchain/community/chat_models/ollama";
 import { ConversationChain } from "langchain/chains";
 import { BufferWindowMemory } from "langchain/memory";
