@@ -32,6 +32,7 @@ async function sendUserMessage(userMessage: string) {
       messages: conversationHistory,
       stream: true,
       num_gpu: 99,
+      use_mmap: false,
     }),
   });
 
